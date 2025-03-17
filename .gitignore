@@ -7,15 +7,13 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
 .DS_Store
 dist
 dist-ssr
 coverage
 *.local
-
-/cypress/videos/
-/cypress/screenshots/
 
 # Editor directories and files
 .vscode/*
@@ -27,4 +25,46 @@ coverage
 *.sln
 *.sw?
 
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+*.pem
+*.key
+secrets.*
+
+# Firebase config and service accounts
+src/utils/firebase-config.js
+*-service-account.json
+firebase-debug.log
+.firebase/
+
+# Local development files
+*.development.js
+*.development.json
+.local/
+
+# Build outputs
+/dist/
+/build/
+/.next/
+/out/
+
+# Debug and test files
+/coverage/
+/cypress/videos/
+/cypress/screenshots/
 *.tsbuildinfo
+.nyc_output/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

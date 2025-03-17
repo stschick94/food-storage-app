@@ -1,7 +1,15 @@
 <script>
+import AuthControls from './components/AuthControls.vue';
+import { firebase } from './utils/firebase';
+import { storage } from './utils/storage';
+
 export default {
+  components: {
+    AuthControls
+  },
   data() {
     return {
+      firebase,
       storageLocations: [
         {
           id: 1,
@@ -11,50 +19,17 @@ export default {
           items: [
             { id: 101, name: 'Frozen Pizza', category: 'Other', quantity: 2, unit: 'pieces', shelf: 'top' },
             { id: 102, name: 'Ice Cream', category: 'Dairy', quantity: 1, unit: 'l', shelf: 'top' },
-            { id: 103, name: 'Mixed Vegetables', category: 'Fruits & Vegetables', quantity: 500, unit: 'g', shelf: 'middle' },
-            { id: 104, name: 'Chicken Breast', category: 'Meat & Fish', quantity: 1, unit: 'kg', shelf: 'bottom' },
-            { id: 105, name: 'Fish Fillets', category: 'Meat & Fish', quantity: 400, unit: 'g', shelf: 'bottom' }
+            { id: 103, name: 'Chicken Breast', category: 'Meat & Fish', quantity: 1, unit: 'kg', shelf: 'bottom' }
           ]
         },
         {
           id: 2,
-          name: 'Refrigerator',
-          icon: '🧊',
-          color: '#7CB9E8',
-          items: [
-            { id: 201, name: 'Milk', category: 'Dairy', quantity: 2, unit: 'l', shelf: 'top' },
-            { id: 202, name: 'Cheese', category: 'Dairy', quantity: 300, unit: 'g', shelf: 'middle' },
-            { id: 203, name: 'Fresh Tomatoes', category: 'Fruits & Vegetables', quantity: 6, unit: 'pieces', shelf: 'middle' },
-            { id: 204, name: 'Yogurt', category: 'Dairy', quantity: 500, unit: 'g', shelf: 'top' },
-            { id: 205, name: 'Orange Juice', category: 'Beverages', quantity: 1, unit: 'l', shelf: 'bottom' },
-            { id: 206, name: 'Lettuce', category: 'Fruits & Vegetables', quantity: 1, unit: 'pieces', shelf: 'bottom' }
-          ]
-        },
-        {
-          id: 3,
           name: 'Pantry',
           icon: '🏷️',
           color: '#C19A6B',
           items: [
             { id: 301, name: 'Rice', category: 'Grains & Pasta', quantity: 2, unit: 'kg', shelf: 'bottom' },
-            { id: 302, name: 'Pasta', category: 'Grains & Pasta', quantity: 3, unit: 'pieces', shelf: 'middle' },
-            { id: 303, name: 'Canned Tomatoes', category: 'Other', quantity: 4, unit: 'pieces', shelf: 'middle' },
-            { id: 304, name: 'Cereal', category: 'Grains & Pasta', quantity: 2, unit: 'pieces', shelf: 'top' },
-            { id: 305, name: 'Potato Chips', category: 'Snacks', quantity: 2, unit: 'pieces', shelf: 'top' },
-            { id: 306, name: 'Coffee Beans', category: 'Beverages', quantity: 500, unit: 'g', shelf: 'middle' }
-          ]
-        },
-        {
-          id: 4,
-          name: 'Cupboard',
-          icon: '🗄️',
-          color: '#B87333',
-          items: [
-            { id: 401, name: 'Olive Oil', category: 'Condiments', quantity: 750, unit: 'ml', shelf: 'middle' },
-            { id: 402, name: 'Salt', category: 'Condiments', quantity: 1, unit: 'kg', shelf: 'top' },
-            { id: 403, name: 'Black Pepper', category: 'Condiments', quantity: 100, unit: 'g', shelf: 'top' },
-            { id: 404, name: 'Cookies', category: 'Snacks', quantity: 2, unit: 'pieces', shelf: 'bottom' },
-            { id: 405, name: 'Tea Bags', category: 'Beverages', quantity: 50, unit: 'pieces', shelf: 'middle' }
+            { id: 302, name: 'Pasta', category: 'Grains & Pasta', quantity: 3, unit: 'pieces', shelf: 'middle' }
           ]
         }
       ],
@@ -101,14 +76,24 @@ export default {
         locations: ['❄️', '🧊', '🏷️', '🗄️', '🪟', '🗃️', '📥', '📦', '🏠', '🏪', '🏬', '📍']
       },
       currentView: 'inventory', // 'inventory' or 'shopping'
-      shoppingList: []
+      shoppingList: [],
+      editingItem: {
+        locationId: null,
+        shelf: null,
+        item: {
+          name: '',
+          category: 'Other',
+          quantity: 1,
+          unit: 'pieces'
+        }
+      }
     }
   },
   methods: {
     selectLocation(location) {
       this.selectedLocation = location
     },
-    addItem() {
+    async addItem() {
       if (!this.newItem.name.trim() || !this.selectedLocation) return
       
       const newItem = {
@@ -138,6 +123,9 @@ export default {
           unit: 'pieces'
         }
       })
+
+      // Save data after adding item
+      await this.saveData()
     },
     determineShelf(category) {
       // Logic to determine which shelf an item should go on based on its category
@@ -167,7 +155,7 @@ export default {
       this.itemToDelete = { item, location }
       this.showDeleteModal = true
     },
-    confirmDelete() {
+    async confirmDelete() {
       const idx = this.itemToDelete.location.items.findIndex(i => i.id === this.itemToDelete.item.id)
       if (idx !== -1) {
         this.itemToDelete.location.items.splice(idx, 1)
@@ -175,6 +163,9 @@ export default {
       }
       this.showDeleteModal = false
       this.itemToDelete = null
+
+      // Save data after deleting item
+      await this.saveData()
     },
     showTooltipMessage(message, duration = 2000) {
       this.tooltipText = message
@@ -188,7 +179,7 @@ export default {
       this.editingCategory = null
       this.editingLocation = null
     },
-    addNewCategory() {
+    async addNewCategory() {
       const newId = Math.max(...this.categories.map(c => c.id)) + 1
       this.categories.push({
         id: newId,
@@ -197,8 +188,11 @@ export default {
         color: '#D3D3D3'
       })
       this.editingCategory = this.categories[this.categories.length - 1]
+
+      // Save data after adding category
+      await this.saveData()
     },
-    addNewLocation() {
+    async addNewLocation() {
       const newId = Math.max(...this.storageLocations.map(l => l.id)) + 1
       this.storageLocations.push({
         id: newId,
@@ -208,17 +202,26 @@ export default {
         items: []
       })
       this.editingLocation = this.storageLocations[this.storageLocations.length - 1]
+
+      // Save data after adding location
+      await this.saveData()
     },
-    deleteCategory(category) {
+    async deleteCategory(category) {
       const idx = this.categories.findIndex(c => c.id === category.id)
       if (idx !== -1) {
         this.categories.splice(idx, 1)
+
+        // Save data after deleting category
+        await this.saveData()
       }
     },
-    deleteLocation(location) {
+    async deleteLocation(location) {
       const idx = this.storageLocations.findIndex(l => l.id === location.id)
       if (idx !== -1) {
         this.storageLocations.splice(idx, 1)
+
+        // Save data after deleting location
+        await this.saveData()
       }
     },
     startEditing(item, type) {
@@ -228,7 +231,7 @@ export default {
         this.editingLocation = { ...item }
       }
     },
-    saveEditing(type) {
+    async saveEditing(type) {
       if (type === 'category' && this.editingCategory) {
         const idx = this.categories.findIndex(c => c.id === this.editingCategory.id)
         if (idx !== -1) {
@@ -242,6 +245,9 @@ export default {
         }
         this.editingLocation = null
       }
+
+      // Save data after editing
+      await this.saveData()
     },
     getCategoryIcon(categoryName) {
       const category = this.categories.find(c => c.name === categoryName)
@@ -257,7 +263,7 @@ export default {
     toggleView() {
       this.currentView = this.currentView === 'inventory' ? 'shopping' : 'inventory'
     },
-    moveToShoppingList(item, location) {
+    async moveToShoppingList(item, location) {
       const idx = location.items.findIndex(i => i.id === item.id)
       if (idx !== -1) {
         const shoppingItem = {
@@ -267,9 +273,12 @@ export default {
         location.items.splice(idx, 1)
         this.shoppingList.push(shoppingItem)
         this.showTooltipMessage('Item added to shopping list!', 2000)
+
+        // Save data after moving item
+        await this.saveData()
       }
     },
-    moveBackToInventory(item) {
+    async moveBackToInventory(item) {
       const idx = this.shoppingList.findIndex(i => i.id === item.id)
       if (idx !== -1) {
         const location = this.storageLocations.find(l => l.name === item.originalLocation)
@@ -278,354 +287,637 @@ export default {
           location.items.push(inventoryItem)
           this.shoppingList.splice(idx, 1)
           this.showTooltipMessage('Item moved back to inventory!', 2000)
+
+          // Save data after moving item back
+          await this.saveData()
         }
       }
+    },
+    async handleAuthChange() {
+      // Update local state to match Firebase auth state
+      if (this.firebase.currentUser) {
+        // Load data from Firebase when user signs in
+        const data = await this.firebase.loadUserData();
+        if (data) {
+          this.storageLocations = data.storageLocations || this.storageLocations;
+          this.categories = data.categories || this.categories;
+          this.shoppingList = data.shoppingList || [];
+        }
+        
+        // Show success message
+        this.showTooltipMessage('Successfully signed in!', 2000);
+      } else {
+        // Reset to default data when signed out
+        this.storageLocations = [
+          {
+            id: 1,
+            name: 'Freezer',
+            icon: '❄️',
+            color: '#89CFF0',
+            items: []
+          },
+          {
+            id: 2,
+            name: 'Pantry',
+            icon: '🏷️',
+            color: '#C19A6B',
+            items: []
+          }
+        ];
+        this.shoppingList = [];
+        
+        // Show sign out message
+        this.showTooltipMessage('Successfully signed out!', 2000);
+      }
+      
+      // Force a re-render of the component
+      await this.$nextTick();
+      this.$forceUpdate();
+    },
+    async saveData() {
+      if (this.firebase.currentUser) {
+        const data = {
+          storageLocations: this.storageLocations,
+          categories: this.categories,
+          shoppingList: this.shoppingList
+        }
+        await this.firebase.saveUserData(data)
+      } else {
+        // Save to localStorage when not authenticated
+        storage.save({
+          storageLocations: this.storageLocations,
+          categories: this.categories,
+          shoppingList: this.shoppingList
+        })
+      }
+    },
+    startAddingItem(locationId, shelf) {
+      this.editingItem = {
+        locationId,
+        shelf,
+        item: {
+          name: '',
+          category: 'Other',
+          quantity: 1,
+          unit: 'pieces'
+        }
+      }
+    },
+    cancelAddingItem() {
+      this.editingItem = {
+        locationId: null,
+        shelf: null,
+        item: {
+          name: '',
+          category: 'Other',
+          quantity: 1,
+          unit: 'pieces'
+        }
+      }
+    },
+    async addItemToShelf() {
+      const location = this.storageLocations.find(l => l.id === this.editingItem.locationId)
+      if (!location || !this.editingItem.item.name.trim()) return
+
+      const newItem = {
+        id: Date.now(),
+        name: this.editingItem.item.name.trim(),
+        category: this.editingItem.item.category,
+        quantity: this.editingItem.item.quantity,
+        unit: this.editingItem.item.unit,
+        shelf: this.editingItem.shelf
+      }
+
+      location.items.push(newItem)
+      this.showTooltipMessage('Item added successfully!', 2000)
+      this.cancelAddingItem()
+      await this.saveData()
     }
   },
-  mounted() {
-    // Check system preference for dark mode
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      this.toggleDarkMode()
+  async mounted() {
+    try {
+      // Initialize Firebase and wait for auth state
+      await this.firebase.init();
+      
+      // Update local state to match Firebase auth state
+      if (this.firebase.currentUser) {
+        const data = await this.firebase.loadUserData();
+        if (data) {
+          this.storageLocations = data.storageLocations || this.storageLocations;
+          this.categories = data.categories || this.categories;
+          this.shoppingList = data.shoppingList || [];
+        }
+        
+        // Force initial render
+        await this.$nextTick();
+        this.$forceUpdate();
+      } else {
+        // Load data from localStorage if not authenticated
+        const data = storage.load();
+        if (data) {
+          this.storageLocations = data.storageLocations || this.storageLocations;
+          this.categories = data.categories || this.categories;
+          this.shoppingList = data.shoppingList || [];
+        }
+      }
+
+      // Check system preference for dark mode
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        this.toggleDarkMode();
+      }
+    } catch (error) {
+      console.error('Error initializing app:', error);
     }
   }
 }
 </script>
 
 <template>
-  <div class="app-container">
-    <header>
-      <div class="header-content">
-        <h1>Food Storage Manager</h1>
-        <div class="header-controls">
-          <button class="view-toggle-btn" @click="toggleView" :title="currentView === 'inventory' ? 'View Shopping List' : 'View Inventory'">
-            {{ currentView === 'inventory' ? '🛒' : '🏠' }}
-          </button>
-          <button class="settings-btn" @click="toggleSettingsModal" title="Settings">
-            ⚙️
-          </button>
-          <button class="theme-customize-btn" @click="toggleThemeCustomizer" title="Customize Theme">
-            🎨
-          </button>
-          <button class="theme-toggle" @click="toggleDarkMode">
-            {{ isDarkMode ? '🌞' : '🌙' }}
-          </button>
-        </div>
+  <div class="app" :class="{ 'dark-mode': isDarkMode }" role="main">
+    <template v-if="!firebase.currentUser">
+      <div class="welcome-section" role="region" aria-labelledby="welcome-title">
+        <h1 id="welcome-title">Welcome to Food Storage Manager</h1>
+        <p>Please sign in to manage your food inventory</p>
       </div>
-    </header>
-    
-    <main>
-      <!-- Inventory View -->
-      <div v-if="currentView === 'inventory'" class="main-grid">
-        <div class="storage-locations">
-          <div class="locations-grid">
-            <div class="location-card" 
-                 v-for="location in storageLocations" 
-                 :key="location.id"
-                 @click="selectLocation(location)"
-                 :class="[
-                   { 'selected': selectedLocation === location },
-                   location.name.toLowerCase()
-                 ]">
-              <h2><span class="location-icon">{{ location.icon }}</span>{{ location.name }}</h2>
-              <div class="items-grid">
-                <!-- Top Shelf -->
-                <div class="shelf-section">
-                  <h4>Top Shelf</h4>
-                  <div class="shelf-items">
-                    <div v-for="item in getShelfItems(location.items, 'top')" 
-                         :key="item.id" 
-                         class="food-item"
-                         :class="{ 'item-delete-animation': itemToDelete?.item.id === item.id }"
-                         @click="moveToShoppingList(item, location)">
-                      <div class="food-item-name">{{ item.name }}</div>
-                      <div class="food-item-details">
-                        <span class="category-tag" :style="{ backgroundColor: getCategoryColor(item.category) }">
-                          {{ getCategoryIcon(item.category) }} {{ item.category }}
-                        </span>
-                        <span class="quantity">{{ item.quantity }} {{ item.unit }}</span>
-                      </div>
-                      <button class="delete-btn" @click.stop="deleteItem(item, location)" title="Delete Item">
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- Middle Shelf -->
-                <div class="shelf-section">
-                  <h4>Middle Shelf</h4>
-                  <div class="shelf-items">
-                    <div v-for="item in getShelfItems(location.items, 'middle')" 
-                         :key="item.id" 
-                         class="food-item"
-                         :class="{ 'item-delete-animation': itemToDelete?.item.id === item.id }"
-                         @click="moveToShoppingList(item, location)">
-                      <div class="food-item-name">{{ item.name }}</div>
-                      <div class="food-item-details">
-                        <span class="category-tag" :style="{ backgroundColor: getCategoryColor(item.category) }">
-                          {{ getCategoryIcon(item.category) }} {{ item.category }}
-                        </span>
-                        <span class="quantity">{{ item.quantity }} {{ item.unit }}</span>
-                      </div>
-                      <button class="delete-btn" @click.stop="deleteItem(item, location)" title="Delete Item">
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- Bottom Shelf -->
-                <div class="shelf-section">
-                  <h4>Bottom Shelf</h4>
-                  <div class="shelf-items">
-                    <div v-for="item in getShelfItems(location.items, 'bottom')" 
-                         :key="item.id" 
-                         class="food-item"
-                         :class="{ 'item-delete-animation': itemToDelete?.item.id === item.id }"
-                         @click="moveToShoppingList(item, location)">
-                      <div class="food-item-name">{{ item.name }}</div>
-                      <div class="food-item-details">
-                        <span class="category-tag" :style="{ backgroundColor: getCategoryColor(item.category) }">
-                          {{ getCategoryIcon(item.category) }} {{ item.category }}
-                        </span>
-                        <span class="quantity">{{ item.quantity }} {{ item.unit }}</span>
-                      </div>
-                      <button class="delete-btn" @click.stop="deleteItem(item, location)" title="Delete Item">
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <AuthControls @auth-changed="handleAuthChange" />
+    </template>
 
-        <div class="add-item-section">
-          <div class="section-card">
-            <h3>Add New Item</h3>
-            <div class="add-item-form">
-              <div class="form-row">
-                <div class="input-with-icon">
-                  <span class="input-icon">📝</span>
-                  <input v-model="newItem.name" 
-                         placeholder="Enter item name" 
-                         @keyup.enter="addItem"
-                         class="modern-input with-icon">
-                </div>
-              </div>
-              
-              <div class="form-row">
-                <div class="select-with-preview">
-                  <select v-model="newItem.category" class="modern-select with-icon">
-                    <option v-for="category in categories" 
-                            :key="category.id" 
-                            :value="category.name">
-                      {{ category.icon }} {{ category.name }}
-                    </option>
-                  </select>
-                  <div class="category-preview" :style="{ backgroundColor: getCategoryColor(newItem.category) }">
-                    {{ getCategoryIcon(newItem.category) }}
-                  </div>
-                </div>
-              </div>
-              
-              <div class="form-row quantity-row">
-                <div class="input-with-icon">
-                  <span class="input-icon">#️⃣</span>
-                  <input type="number" 
-                         v-model="newItem.quantity" 
-                         min="0" 
-                         step="0.1" 
-                         class="modern-input with-icon quantity-input">
-                </div>
-                
-                <div class="select-with-icon">
-                  <span class="input-icon">📏</span>
-                  <select v-model="newItem.unit" class="modern-select with-icon unit-select">
-                    <option v-for="unit in units" 
-                            :key="unit.value" 
-                            :value="unit.value">{{ unit.label }}</option>
-                  </select>
-                </div>
-              </div>
-              
-              <button class="modern-button add-button" 
-                      @click="addItem" 
-                      :disabled="!selectedLocation || !newItem.name.trim()">
-                <span class="button-icon">➕</span>
-                Add to {{ selectedLocation?.name || 'storage' }}
+    <template v-else>
+      <AuthControls @auth-changed="handleAuthChange" />
+      <div class="app-container" role="application">
+        <header role="banner">
+          <div class="header-content">
+            <h1>Food Storage Manager</h1>
+            <nav class="header-controls" role="navigation" aria-label="Main navigation">
+              <button class="view-toggle-btn" 
+                      @click="toggleView" 
+                      :aria-label="currentView === 'inventory' ? 'View Shopping List' : 'View Inventory'">
+                {{ currentView === 'inventory' ? '🛒' : '🏠' }}
               </button>
-            </div>
+              <button class="settings-btn" 
+                      @click="toggleSettingsModal" 
+                      aria-label="Settings">
+                ⚙️
+              </button>
+              <button class="theme-customize-btn" 
+                      @click="toggleThemeCustomizer" 
+                      aria-label="Customize Theme">
+                🎨
+              </button>
+              <button class="theme-toggle" 
+                      @click="toggleDarkMode"
+                      :aria-label="isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
+                {{ isDarkMode ? '🌞' : '🌙' }}
+              </button>
+            </nav>
           </div>
-        </div>
-      </div>
-
-      <!-- Shopping List View -->
-      <div v-else class="shopping-list-view">
-        <div class="section-card">
-          <h2>Shopping List</h2>
-          <div class="shopping-list-container">
-            <div v-if="shoppingList.length === 0" class="empty-list">
-              <p>Your shopping list is empty</p>
-              <p class="empty-hint">Click items in your inventory to add them here</p>
-            </div>
-            <div v-else class="shopping-items">
-              <div v-for="item in shoppingList" 
-                   :key="item.id"
-                   class="shopping-item"
-                   @click="moveBackToInventory(item)">
-                <div class="shopping-item-content">
-                  <div class="shopping-item-name">{{ item.name }}</div>
-                  <div class="shopping-item-details">
-                    <span class="category-tag" :style="{ backgroundColor: getCategoryColor(item.category) }">
-                      {{ getCategoryIcon(item.category) }} {{ item.category }}
-                    </span>
-                    <span class="quantity">{{ item.quantity }} {{ item.unit }}</span>
-                  </div>
-                  <div class="location-tag">
-                    <span class="location-icon">{{ storageLocations.find(l => l.name === item.originalLocation)?.icon }}</span>
-                    {{ item.originalLocation }}
+        </header>
+        
+        <main>
+          <!-- Inventory View -->
+          <div v-if="currentView === 'inventory'" class="main-grid" role="region" aria-label="Inventory management">
+            <div class="storage-locations">
+              <div class="locations-grid">
+                <div class="location-card" 
+                     v-for="location in storageLocations" 
+                     :key="location.id"
+                     @click="selectLocation(location)"
+                     :class="[
+                       { 'selected': selectedLocation === location },
+                       location.name.toLowerCase()
+                     ]">
+                  <h2><span class="location-icon">{{ location.icon }}</span>{{ location.name }}</h2>
+                  <div class="items-grid">
+                    <!-- Top Shelf -->
+                    <div class="shelf-section">
+                      <h4>Top Shelf</h4>
+                      <div class="shelf-items">
+                        <div v-for="item in getShelfItems(location.items, 'top')" 
+                             :key="item.id" 
+                             class="food-item"
+                             :class="{ 'item-delete-animation': itemToDelete?.item.id === item.id }"
+                             @click="moveToShoppingList(item, location)">
+                          <div class="food-item-name">{{ item.name }}</div>
+                          <div class="food-item-details">
+                            <span class="category-tag" :style="{ backgroundColor: getCategoryColor(item.category) }">
+                              {{ getCategoryIcon(item.category) }} {{ item.category }}
+                            </span>
+                            <span class="quantity">{{ item.quantity }} {{ item.unit }}</span>
+                          </div>
+                          <button class="delete-btn" @click.stop="deleteItem(item, location)" title="Delete Item">
+                            ×
+                          </button>
+                        </div>
+                        
+                        <!-- Add Item Placeholder -->
+                        <div v-if="editingItem.locationId === location.id && editingItem.shelf === 'top'"
+                             class="add-item-placeholder editing">
+                          <div class="add-item-form-inline">
+                            <div class="form-row-inline">
+                              <input v-model="editingItem.item.name"
+                                     placeholder="Item name"
+                                     class="modern-input"
+                                     @keyup.enter="addItemToShelf">
+                              <select v-model="editingItem.item.category" 
+                                      class="modern-select">
+                                <option v-for="category in categories" 
+                                        :key="category.id" 
+                                        :value="category.name">
+                                  {{ category.icon }} {{ category.name }}
+                                </option>
+                              </select>
+                            </div>
+                            <div class="form-row-inline">
+                              <input type="number"
+                                     v-model="editingItem.item.quantity"
+                                     min="0"
+                                     step="0.1"
+                                     class="modern-input">
+                              <select v-model="editingItem.item.unit"
+                                      class="modern-select">
+                                <option v-for="unit in units"
+                                        :key="unit.value"
+                                        :value="unit.value">
+                                  {{ unit.label }}
+                                </option>
+                              </select>
+                            </div>
+                            <div class="form-actions">
+                              <button class="modern-button danger" @click="cancelAddingItem">Cancel</button>
+                              <button class="modern-button" 
+                                      @click="addItemToShelf"
+                                      :disabled="!editingItem.item.name.trim()">
+                                Add Item
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        <div v-else
+                             class="add-item-placeholder"
+                             @click="startAddingItem(location.id, 'top')">
+                          <div class="placeholder-text">
+                            <span class="placeholder-icon">➕</span>
+                            Add Item
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <!-- Middle Shelf -->
+                    <div class="shelf-section">
+                      <h4>Middle Shelf</h4>
+                      <div class="shelf-items">
+                        <div v-for="item in getShelfItems(location.items, 'middle')" 
+                             :key="item.id" 
+                             class="food-item"
+                             :class="{ 'item-delete-animation': itemToDelete?.item.id === item.id }"
+                             @click="moveToShoppingList(item, location)">
+                          <div class="food-item-name">{{ item.name }}</div>
+                          <div class="food-item-details">
+                            <span class="category-tag" :style="{ backgroundColor: getCategoryColor(item.category) }">
+                              {{ getCategoryIcon(item.category) }} {{ item.category }}
+                            </span>
+                            <span class="quantity">{{ item.quantity }} {{ item.unit }}</span>
+                          </div>
+                          <button class="delete-btn" @click.stop="deleteItem(item, location)" title="Delete Item">
+                            ×
+                          </button>
+                        </div>
+                        
+                        <!-- Add Item Placeholder -->
+                        <div v-if="editingItem.locationId === location.id && editingItem.shelf === 'middle'"
+                             class="add-item-placeholder editing">
+                          <div class="add-item-form-inline">
+                            <div class="form-row-inline">
+                              <input v-model="editingItem.item.name"
+                                     placeholder="Item name"
+                                     class="modern-input"
+                                     @keyup.enter="addItemToShelf">
+                              <select v-model="editingItem.item.category" 
+                                      class="modern-select">
+                                <option v-for="category in categories" 
+                                        :key="category.id" 
+                                        :value="category.name">
+                                  {{ category.icon }} {{ category.name }}
+                                </option>
+                              </select>
+                            </div>
+                            <div class="form-row-inline">
+                              <input type="number"
+                                     v-model="editingItem.item.quantity"
+                                     min="0"
+                                     step="0.1"
+                                     class="modern-input">
+                              <select v-model="editingItem.item.unit"
+                                      class="modern-select">
+                                <option v-for="unit in units"
+                                        :key="unit.value"
+                                        :value="unit.value">
+                                  {{ unit.label }}
+                                </option>
+                              </select>
+                            </div>
+                            <div class="form-actions">
+                              <button class="modern-button danger" @click="cancelAddingItem">Cancel</button>
+                              <button class="modern-button" 
+                                      @click="addItemToShelf"
+                                      :disabled="!editingItem.item.name.trim()">
+                                Add Item
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        <div v-else
+                             class="add-item-placeholder"
+                             @click="startAddingItem(location.id, 'middle')">
+                          <div class="placeholder-text">
+                            <span class="placeholder-icon">➕</span>
+                            Add Item
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <!-- Bottom Shelf -->
+                    <div class="shelf-section">
+                      <h4>Bottom Shelf</h4>
+                      <div class="shelf-items">
+                        <div v-for="item in getShelfItems(location.items, 'bottom')" 
+                             :key="item.id" 
+                             class="food-item"
+                             :class="{ 'item-delete-animation': itemToDelete?.item.id === item.id }"
+                             @click="moveToShoppingList(item, location)">
+                          <div class="food-item-name">{{ item.name }}</div>
+                          <div class="food-item-details">
+                            <span class="category-tag" :style="{ backgroundColor: getCategoryColor(item.category) }">
+                              {{ getCategoryIcon(item.category) }} {{ item.category }}
+                            </span>
+                            <span class="quantity">{{ item.quantity }} {{ item.unit }}</span>
+                          </div>
+                          <button class="delete-btn" @click.stop="deleteItem(item, location)" title="Delete Item">
+                            ×
+                          </button>
+                        </div>
+                        
+                        <!-- Add Item Placeholder -->
+                        <div v-if="editingItem.locationId === location.id && editingItem.shelf === 'bottom'"
+                             class="add-item-placeholder editing">
+                          <div class="add-item-form-inline">
+                            <div class="form-row-inline">
+                              <input v-model="editingItem.item.name"
+                                     placeholder="Item name"
+                                     class="modern-input"
+                                     @keyup.enter="addItemToShelf">
+                              <select v-model="editingItem.item.category" 
+                                      class="modern-select">
+                                <option v-for="category in categories" 
+                                        :key="category.id" 
+                                        :value="category.name">
+                                  {{ category.icon }} {{ category.name }}
+                                </option>
+                              </select>
+                            </div>
+                            <div class="form-row-inline">
+                              <input type="number"
+                                     v-model="editingItem.item.quantity"
+                                     min="0"
+                                     step="0.1"
+                                     class="modern-input">
+                              <select v-model="editingItem.item.unit"
+                                      class="modern-select">
+                                <option v-for="unit in units"
+                                        :key="unit.value"
+                                        :value="unit.value">
+                                  {{ unit.label }}
+                                </option>
+                              </select>
+                            </div>
+                            <div class="form-actions">
+                              <button class="modern-button danger" @click="cancelAddingItem">Cancel</button>
+                              <button class="modern-button" 
+                                      @click="addItemToShelf"
+                                      :disabled="!editingItem.item.name.trim()">
+                                Add Item
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        <div v-else
+                             class="add-item-placeholder"
+                             @click="startAddingItem(location.id, 'bottom')">
+                          <div class="placeholder-text">
+                            <span class="placeholder-icon">➕</span>
+                            Add Item
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <button class="restore-btn" title="Move back to inventory">
-                  ↩️
-                </button>
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </main>
 
-    <!-- Theme Customizer Modal -->
-    <div v-if="showThemeCustomizer" class="modal-overlay" @click="showThemeCustomizer = false">
-      <div class="modal-content theme-customizer" @click.stop>
-        <h3>Customize Theme</h3>
-        <div class="color-picker-group">
-          <label>
-            Accent Color
-            <input type="color" v-model="customTheme.accent" @input="updateTheme">
-          </label>
-          <label>
-            Secondary Color
-            <input type="color" v-model="customTheme.secondary" @input="updateTheme">
-          </label>
-        </div>
-        <button class="modern-button" @click="showThemeCustomizer = false">Close</button>
-      </div>
-    </div>
-
-    <!-- Delete Confirmation Modal -->
-    <div v-if="showDeleteModal" class="modal-overlay" @click="showDeleteModal = false">
-      <div class="modal-content delete-modal" @click.stop>
-        <h3>Confirm Delete</h3>
-        <p>Are you sure you want to delete "{{ itemToDelete?.item.name }}"?</p>
-        <div class="modal-actions">
-          <button class="modern-button cancel-btn" @click="showDeleteModal = false">Cancel</button>
-          <button class="modern-button delete-confirm-btn" @click="confirmDelete">Delete</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Settings Modal -->
-    <div v-if="showSettingsModal" class="modal-overlay" @click="toggleSettingsModal">
-      <div class="modal-content settings-modal" @click.stop>
-        <h3>Settings</h3>
-        
-        <div class="settings-content">
-          <!-- Categories Section -->
-          <div class="settings-section">
-            <div class="settings-header">
-              <h4>Categories</h4>
-              <button class="modern-button small" @click="addNewCategory">Add New</button>
+          <!-- Shopping List View -->
+          <div v-else class="shopping-list-view" role="region" aria-label="Shopping list">
+            <div class="section-card">
+              <h2>Shopping List</h2>
+              <div class="shopping-list-container">
+                <div v-if="shoppingList.length === 0" class="empty-list">
+                  <p>Your shopping list is empty</p>
+                  <p class="empty-hint">Click items in your inventory to add them here</p>
+                </div>
+                <div v-else class="shopping-items">
+                  <div v-for="item in shoppingList" 
+                       :key="item.id"
+                       class="shopping-item"
+                       @click="moveBackToInventory(item)">
+                    <div class="shopping-item-content">
+                      <div class="shopping-item-name">{{ item.name }}</div>
+                      <div class="shopping-item-details">
+                        <span class="category-tag" :style="{ backgroundColor: getCategoryColor(item.category) }">
+                          {{ getCategoryIcon(item.category) }} {{ item.category }}
+                        </span>
+                        <span class="quantity">{{ item.quantity }} {{ item.unit }}</span>
+                      </div>
+                      <div class="location-tag">
+                        <span class="location-icon">{{ storageLocations.find(l => l.name === item.originalLocation)?.icon }}</span>
+                        {{ item.originalLocation }}
+                      </div>
+                    </div>
+                    <button class="restore-btn" title="Move back to inventory">
+                      ↩️
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
+          </div>
+        </main>
+
+        <!-- Theme Customizer Modal -->
+        <div v-if="showThemeCustomizer" class="modal-overlay" @click="showThemeCustomizer = false">
+          <div class="modal-content theme-customizer" @click.stop>
+            <h3>Customize Theme</h3>
+            <div class="color-picker-group">
+              <label>
+                Accent Color
+                <input type="color" v-model="customTheme.accent" @input="updateTheme">
+              </label>
+              <label>
+                Secondary Color
+                <input type="color" v-model="customTheme.secondary" @input="updateTheme">
+              </label>
+            </div>
+            <button class="modern-button" @click="showThemeCustomizer = false">Close</button>
+          </div>
+        </div>
+
+        <!-- Delete Confirmation Modal -->
+        <div v-if="showDeleteModal" class="modal-overlay" @click="showDeleteModal = false">
+          <div class="modal-content delete-modal" @click.stop>
+            <h3>Confirm Delete</h3>
+            <p>Are you sure you want to delete "{{ itemToDelete?.item.name }}"?</p>
+            <div class="modal-actions">
+              <button class="modern-button cancel-btn" @click="showDeleteModal = false">Cancel</button>
+              <button class="modern-button delete-confirm-btn" @click="confirmDelete">Delete</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div v-if="showSettingsModal" class="modal-overlay" @click="toggleSettingsModal">
+          <div class="modal-content settings-modal" @click.stop>
+            <h3>Settings</h3>
             
-            <div class="settings-items">
-              <div v-for="category in categories" :key="category.id" 
-                   class="settings-item"
-                   :style="{ borderColor: category.color }">
-                <template v-if="editingCategory?.id === category.id">
-                  <div class="edit-form">
-                    <input v-model="editingCategory.name" class="modern-input">
-                    <div class="icon-picker">
-                      <button v-for="icon in defaultIcons.categories" 
-                              :key="icon"
-                              class="icon-btn" 
-                              @click="editingCategory.icon = icon">{{ icon }}</button>
-                    </div>
-                    <input type="color" v-model="editingCategory.color" class="color-picker">
-                    <div class="edit-actions">
-                      <button class="modern-button small" @click="saveEditing('category')">Save</button>
-                      <button class="modern-button small danger" @click="editingCategory = null">Cancel</button>
-                    </div>
+            <div class="settings-content">
+              <!-- Categories Section -->
+              <div class="settings-section">
+                <div class="settings-header">
+                  <h4>Categories</h4>
+                  <button class="modern-button small" @click="addNewCategory">Add New</button>
+                </div>
+                
+                <div class="settings-items">
+                  <div v-for="category in categories" :key="category.id" 
+                       class="settings-item"
+                       :style="{ borderColor: category.color }">
+                    <template v-if="editingCategory?.id === category.id">
+                      <div class="edit-form">
+                        <input v-model="editingCategory.name" class="modern-input">
+                        <div class="icon-picker">
+                          <button v-for="icon in defaultIcons.categories" 
+                                  :key="icon"
+                                  class="icon-btn" 
+                                  @click="editingCategory.icon = icon">{{ icon }}</button>
+                        </div>
+                        <input type="color" v-model="editingCategory.color" class="color-picker">
+                        <div class="edit-actions">
+                          <button class="modern-button small" @click="saveEditing('category')">Save</button>
+                          <button class="modern-button small danger" @click="editingCategory = null">Cancel</button>
+                        </div>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <span class="item-icon">{{ category.icon }}</span>
+                      <span class="item-name">{{ category.name }}</span>
+                      <div class="item-actions">
+                        <button class="action-btn" @click="startEditing(category, 'category')">✏️</button>
+                        <button class="action-btn" @click="deleteCategory(category)" 
+                                v-if="category.name !== 'Other'">🗑️</button>
+                      </div>
+                    </template>
                   </div>
-                </template>
-                <template v-else>
-                  <span class="item-icon">{{ category.icon }}</span>
-                  <span class="item-name">{{ category.name }}</span>
-                  <div class="item-actions">
-                    <button class="action-btn" @click="startEditing(category, 'category')">✏️</button>
-                    <button class="action-btn" @click="deleteCategory(category)" 
-                            v-if="category.name !== 'Other'">🗑️</button>
-                  </div>
-                </template>
+                </div>
               </div>
-            </div>
-          </div>
 
-          <!-- Locations Section -->
-          <div class="settings-section">
-            <div class="settings-header">
-              <h4>Storage Locations</h4>
-              <button class="modern-button small" @click="addNewLocation">Add New</button>
-            </div>
-            
-            <div class="settings-items">
-              <div v-for="location in storageLocations" :key="location.id" 
-                   class="settings-item"
-                   :style="{ borderColor: location.color }">
-                <template v-if="editingLocation?.id === location.id">
-                  <div class="edit-form">
-                    <input v-model="editingLocation.name" class="modern-input">
-                    <div class="icon-picker">
-                      <button v-for="icon in defaultIcons.locations" 
-                              :key="icon"
-                              class="icon-btn" 
-                              @click="editingLocation.icon = icon">{{ icon }}</button>
-                    </div>
-                    <input type="color" v-model="editingLocation.color" class="color-picker">
-                    <div class="edit-actions">
-                      <button class="modern-button small" @click="saveEditing('location')">Save</button>
-                      <button class="modern-button small danger" @click="editingLocation = null">Cancel</button>
-                    </div>
+              <!-- Locations Section -->
+              <div class="settings-section">
+                <div class="settings-header">
+                  <h4>Storage Locations</h4>
+                  <button class="modern-button small" @click="addNewLocation">Add New</button>
+                </div>
+                
+                <div class="settings-items">
+                  <div v-for="location in storageLocations" :key="location.id" 
+                       class="settings-item"
+                       :style="{ borderColor: location.color }">
+                    <template v-if="editingLocation?.id === location.id">
+                      <div class="edit-form">
+                        <input v-model="editingLocation.name" class="modern-input">
+                        <div class="icon-picker">
+                          <button v-for="icon in defaultIcons.locations" 
+                                  :key="icon"
+                                  class="icon-btn" 
+                                  @click="editingLocation.icon = icon">{{ icon }}</button>
+                        </div>
+                        <input type="color" v-model="editingLocation.color" class="color-picker">
+                        <div class="edit-actions">
+                          <button class="modern-button small" @click="saveEditing('location')">Save</button>
+                          <button class="modern-button small danger" @click="editingLocation = null">Cancel</button>
+                        </div>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <span class="item-icon">{{ location.icon }}</span>
+                      <span class="item-name">{{ location.name }}</span>
+                      <div class="item-actions">
+                        <button class="action-btn" @click="startEditing(location, 'location')">✏️</button>
+                        <button class="action-btn" @click="deleteLocation(location)">🗑️</button>
+                      </div>
+                    </template>
                   </div>
-                </template>
-                <template v-else>
-                  <span class="item-icon">{{ location.icon }}</span>
-                  <span class="item-name">{{ location.name }}</span>
-                  <div class="item-actions">
-                    <button class="action-btn" @click="startEditing(location, 'location')">✏️</button>
-                    <button class="action-btn" @click="deleteLocation(location)">🗑️</button>
-                  </div>
-                </template>
+                </div>
               </div>
             </div>
+
+            <button class="modern-button" @click="toggleSettingsModal">Close</button>
           </div>
         </div>
 
-        <button class="modern-button" @click="toggleSettingsModal">Close</button>
+        <!-- Tooltip -->
+        <div v-if="showTooltip" class="tooltip" :style="{ top: tooltipPosition.y + 'px', left: tooltipPosition.x + 'px' }">
+          {{ tooltipText }}
+        </div>
       </div>
-    </div>
-
-    <!-- Tooltip -->
-    <div v-if="showTooltip" class="tooltip" :style="{ top: tooltipPosition.y + 'px', left: tooltipPosition.x + 'px' }">
-      {{ tooltipText }}
-    </div>
+    </template>
   </div>
 </template>
 
 <style>
+.welcome-section {
+  text-align: center;
+  padding: 4rem 2rem;
+  margin: 2rem auto;
+  max-width: 600px;
+  background: var(--bg-card);
+  border-radius: 16px;
+  box-shadow: 0 4px 12px var(--shadow-color);
+}
+
+.welcome-section h1 {
+  font-size: 2.5rem;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.welcome-section p {
+  font-size: 1.2rem;
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+}
+
+@media (max-width: 768px) {
+  .welcome-section h1 {
+    font-size: 2rem;
+  }
+
+  .welcome-section p {
+    font-size: 1.1rem;
+  }
+}
+
 :root {
   --bg-primary: #ffffff;
   --bg-secondary: #f8f9fa;
@@ -641,6 +933,9 @@ export default {
   --danger-color: #dc3545;
   --danger-hover: #c82333;
   --modal-overlay: rgba(0, 0, 0, 0.5);
+  --header-height: 60px;
+  --content-max-width: 1200px;
+  --spacing-unit: 1rem;
 }
 
 .dark-mode {
@@ -649,381 +944,434 @@ export default {
   --bg-card: #333333;
   --text-primary: #ffffff;
   --text-secondary: #b3b3b3;
-  --accent-color: #42b983;
-  --accent-hover: #3aa876;
   --border-color: #404040;
   --shadow-color: rgba(0, 0, 0, 0.3);
   --input-bg: #2d2d2d;
   --tag-bg: #404040;
 }
 
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
 body {
   margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   background-color: var(--bg-primary);
   color: var(--text-primary);
+  line-height: 1.6;
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-primary);
+}
+
 .app-container {
-  max-width: 1200px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: 20px;
+  padding: 1rem;
+  gap: 1.5rem;
+}
+
+header {
+  background: var(--bg-card);
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 2px 8px var(--shadow-color);
 }
 
 .header-content {
+  padding: 1rem 2rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 40px;
 }
 
-.theme-toggle {
-  background: none;
+.header-controls {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.header-controls button {
+  background: var(--bg-secondary);
   border: none;
-  font-size: 1.5rem;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  font-size: 1.25rem;
   cursor: pointer;
-  padding: 8px;
-  border-radius: 50%;
-  transition: background-color 0.3s ease;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.theme-toggle:hover {
-  background-color: var(--bg-secondary);
+.header-controls button:hover {
+  background: var(--accent-color);
+  color: white;
+  transform: translateY(-1px);
+}
+
+.view-toggle-btn, .settings-btn, .theme-customize-btn, .theme-toggle {
+  background: var(--bg-secondary);
+  border: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.view-toggle-btn:hover, .settings-btn:hover, .theme-customize-btn:hover, .theme-toggle:hover {
+  background: var(--accent-color);
+  color: white;
+  transform: translateY(-1px);
+}
+
+main {
+  flex: 1;
+  width: 100%;
 }
 
 .main-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 400px;
-  gap: 24px;
-  margin-bottom: 40px;
-  align-items: start;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
 }
 
 .storage-locations {
-  min-width: 0;
+  display: grid;
+  gap: 1.5rem;
 }
 
 .locations-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 20px;
-}
-
-.add-item-section {
-  position: sticky;
-  top: 24px;
-}
-
-.section-card {
-  height: fit-content;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
 }
 
 .location-card {
-  height: 100%;
-  min-height: 400px;
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 12px var(--shadow-color);
+  border: 1px solid var(--border-color);
+  transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
-  background-size: cover;
-  background-position: center;
+  gap: 1rem;
   position: relative;
   overflow: hidden;
-  padding: 20px;
-  border-radius: 16px;
 }
 
-.location-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: var(--bg-card);
-  opacity: 0.85;
-  z-index: 1;
-}
-
-.location-card.freezer {
-  background-image: url('https://images.unsplash.com/photo-1584568694244-14fbdf83bd30?w=800');
-}
-
-.location-card.refrigerator {
-  background-image: url('https://images.unsplash.com/photo-1536236397240-9b229a37a286?w=800');
-}
-
-.location-card.pantry {
-  background-image: url('https://images.unsplash.com/photo-1629079447777-1e605162dc8d?w=800');
-}
-
-.location-card.cupboard {
-  background-image: url('https://images.unsplash.com/photo-1600585152220-90363fe7e115?w=800');
+.location-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px var(--shadow-color);
 }
 
 .location-card h2 {
-  position: relative;
-  z-index: 2;
-  background: var(--bg-card);
-  padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 8px var(--shadow-color);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
 }
 
-.items-grid {
-  flex: 1;
-  margin-top: 15px;
-  display: grid;
-  grid-template-rows: repeat(3, 1fr);
-  gap: 16px;
-  position: relative;
-  z-index: 2;
+.location-icon {
+  font-size: 1.5rem;
 }
 
 .shelf-section {
-  background: rgba(255, 255, 255, 0.8);
-  padding: 12px;
+  background: var(--bg-secondary);
   border-radius: 8px;
-  box-shadow: 0 2px 8px var(--shadow-color);
+  padding: 1rem;
+  margin-bottom: 1rem;
 }
 
 .shelf-section h4 {
-  margin: 0 0 8px 0;
-  color: var(--text-secondary);
-  font-size: 0.9em;
+  font-size: 0.9rem;
   text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  letter-spacing: 0.5px;
 }
 
 .shelf-items {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
 }
 
 .food-item {
   background: var(--bg-card);
-  padding: 12px;
   border-radius: 8px;
+  padding: 1rem;
   box-shadow: 0 2px 4px var(--shadow-color);
-  position: relative;
-  height: auto;
-  cursor: pointer;
+  border: 1px solid var(--border-color);
   transition: all 0.3s ease;
+  cursor: pointer;
 }
 
 .food-item:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 12px var(--shadow-color);
-}
-
-.food-item-details {
-  margin-top: auto;
+  box-shadow: 0 4px 8px var(--shadow-color);
 }
 
 .food-item-name {
   font-weight: 500;
-  margin-bottom: 8px;
-  color: var(--text-primary);
+  margin-bottom: 0.75rem;
 }
 
 .food-item-details {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.8em;
-  color: var(--text-secondary);
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .category-tag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 16px;
+  font-size: 0.85rem;
   background: var(--tag-bg);
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 0.9em;
-  color: var(--text-primary);
 }
 
 .quantity {
-  color: var(--accent-color);
   font-weight: 500;
+  color: var(--accent-color);
 }
 
-.section-card {
+.add-item-section .section-card {
   background: var(--bg-card);
-  border-radius: 16px;
-  padding: 24px;
+  border-radius: 12px;
+  padding: 1.5rem;
   box-shadow: 0 4px 12px var(--shadow-color);
   border: 1px solid var(--border-color);
-  transition: all 0.3s ease;
-}
-
-.section-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px var(--shadow-color);
-}
-
-.section-card h3 {
-  font-size: 1.4em;
-  margin-bottom: 20px;
-  text-align: center;
-  color: var(--text-primary);
 }
 
 .add-item-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  max-width: 400px;
-  margin: 0 auto;
-  padding: 16px;
-  background: var(--bg-secondary);
-  border-radius: 16px;
-  box-shadow: 0 2px 8px var(--shadow-color);
+  gap: 1rem;
 }
 
-.input-with-icon, .select-with-icon {
-  position: relative;
+.modern-input, .modern-select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
   width: 100%;
-}
-
-.input-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 1.2em;
-  color: var(--text-secondary);
-  pointer-events: none;
-}
-
-.modern-input.with-icon, .modern-select.with-icon {
-  padding-left: 40px;
-}
-
-.select-with-preview {
-  position: relative;
-  width: 100%;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-.category-preview {
-  width: 40px;
-  height: 40px;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.2em;
+  background: var(--bg-card);
+  color: var(--text-primary);
   transition: all 0.3s ease;
+  font-size: 16px; /* Prevent zoom on mobile Safari */
 }
 
-.add-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: 1.1em;
-  padding: 14px 28px;
+.modern-input:focus, .modern-select:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(66, 185, 131, 0.1);
+}
+
+.modern-button {
   background: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 500;
+  cursor: pointer;
   transition: all 0.3s ease;
 }
 
-.add-button:not(:disabled):hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(66, 185, 131, 0.2);
+.modern-button:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
 }
 
-.button-icon {
-  font-size: 1.2em;
+.modern-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
-.quantity-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-@media (max-width: 1024px) {
+@media (max-width: 1200px) {
   .main-grid {
     grid-template-columns: 1fr;
   }
 
   .add-item-section {
     position: static;
+    order: -1;
+  }
+
+  .locations-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   }
 }
 
 @media (max-width: 768px) {
+  .app-container {
+    padding: 0.75rem;
+  }
+
   .locations-grid {
     grid-template-columns: 1fr;
   }
 
-  .main-grid {
-    gap: 16px;
+  .header-content {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+  }
+
+  .shelf-items {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   }
 }
 
-/* Animation for form inputs */
-.modern-input:focus, .modern-select:focus {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(66, 185, 131, 0.1);
-}
-
-h1, h2, h3 {
-  color: var(--text-primary);
-  margin: 0;
-}
-
-/* Remove number input spinners */
-input[type="number"] {
-  -moz-appearance: textfield;
-}
-
-input[type="number"]::-webkit-outer-spin-button,
-input[type="number"]::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-/* New Animations */
-@keyframes slideIn {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
+@media (max-width: 480px) {
+  .app-container {
+    padding: 0.5rem;
   }
-  to {
-    transform: translateY(0);
+
+  .location-card {
+    padding: 1rem;
+  }
+
+  .shelf-section {
+    padding: 0.75rem;
+  }
+
+  .food-item {
+    padding: 0.75rem;
+  }
+
+  .shelf-items {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (hover: none) {
+  .delete-btn {
     opacity: 1;
+    background: rgba(var(--danger-color-rgb), 0.1);
+  }
+
+  .location-card:hover {
+    transform: none;
+  }
+
+  .food-item:hover {
+    transform: none;
   }
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+.shopping-list-view {
+  max-width: 800px;
+  margin: 0 auto;
 }
 
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-5px); }
-  75% { transform: translateX(5px); }
+.shopping-list-container {
+  margin-top: 20px;
 }
 
-.form-reset-animation {
-  animation: shake 0.5s ease-in-out;
+.empty-list {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-secondary);
 }
 
-.item-delete-animation {
-  animation: slideOut 0.3s ease-in-out forwards;
+.empty-hint {
+  font-size: 0.9em;
+  margin-top: 8px;
+  opacity: 0.7;
 }
 
-@keyframes slideOut {
-  to {
-    transform: translateX(100%);
-    opacity: 0;
-  }
+.shopping-items {
+  display: grid;
+  gap: 16px;
+}
+
+.shopping-item {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.shopping-item:hover {
+  transform: translateX(-4px);
+  background: var(--bg-primary);
+  box-shadow: 0 4px 12px var(--shadow-color);
+}
+
+.shopping-item-content {
+  flex: 1;
+}
+
+.shopping-item-name {
+  font-size: 1.1em;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.shopping-item-details {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.location-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.9em;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.restore-btn {
+  background: none;
+  border: none;
+  font-size: 1.2em;
+  padding: 8px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: all 0.3s ease;
+}
+
+.restore-btn:hover {
+  opacity: 1;
+  transform: scale(1.1);
 }
 
 /* Modal Styles */
@@ -1072,19 +1420,17 @@ input[type="number"]::-webkit-inner-spin-button {
 /* Delete Button */
 .delete-btn {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  background: transparent;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: none;
   border: none;
   color: var(--text-secondary);
-  font-size: 20px;
+  font-size: 1.25rem;
   cursor: pointer;
   opacity: 0;
   transition: all 0.3s ease;
-}
-
-.food-item {
-  position: relative;
+  padding: 0.25rem;
+  border-radius: 4px;
 }
 
 .food-item:hover .delete-btn {
@@ -1092,8 +1438,8 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .delete-btn:hover {
-  color: var(--danger-color);
-  transform: scale(1.1);
+  background: var(--danger-color);
+  color: white;
 }
 
 /* Tooltip */
@@ -1105,66 +1451,6 @@ input[type="number"]::-webkit-inner-spin-button {
   box-shadow: 0 2px 8px var(--shadow-color);
   z-index: 1000;
   animation: fadeIn 0.3s ease;
-}
-
-/* Mobile Responsiveness */
-@media (max-width: 768px) {
-  .app-container {
-    padding: 10px;
-  }
-
-  .storage-locations {
-    grid-template-columns: 1fr;
-  }
-
-  .items-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .form-row {
-    flex-direction: column;
-  }
-
-  .quantity-row {
-    flex-direction: row;
-  }
-
-  .modern-input, .modern-select {
-    width: 100%;
-  }
-
-  .quantity-input, .unit-select {
-    width: 50%;
-  }
-
-  .header-content {
-    flex-direction: column;
-    gap: 16px;
-    text-align: center;
-  }
-}
-
-/* Theme Customization Button */
-.theme-customize-btn {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 50%;
-  transition: all 0.3s ease;
-  margin-right: 8px;
-}
-
-.theme-customize-btn:hover {
-  background-color: var(--bg-secondary);
-  transform: rotate(180deg);
-}
-
-.header-controls {
-  display: flex;
-  gap: 8px;
-  align-items: center;
 }
 
 /* Modal Actions */
@@ -1221,23 +1507,34 @@ input[type="number"]::-webkit-inner-spin-button {
   overflow-y: auto;
   padding-right: 16px;
   margin-right: -16px;
-  /* Scrollbar styling */
+  /* Cross-browser scrollbar styling */
   scrollbar-width: thin;
   scrollbar-color: var(--accent-color) var(--bg-secondary);
+  -webkit-overflow-scrolling: touch;
 }
 
+/* Webkit (Safari/Chrome) scrollbar styles */
 .settings-content::-webkit-scrollbar {
   width: 8px;
-}
-
-.settings-content::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
-  border-radius: 4px;
+  background-color: var(--bg-secondary);
 }
 
 .settings-content::-webkit-scrollbar-thumb {
-  background: var(--accent-color);
+  background-color: var(--accent-color);
   border-radius: 4px;
+}
+
+.settings-content::-webkit-scrollbar-track {
+  background-color: var(--bg-secondary);
+  border-radius: 4px;
+}
+
+/* Safari-specific styles */
+@supports (-webkit-overflow-scrolling: touch) {
+  .settings-content {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .settings-section {
@@ -1416,91 +1713,172 @@ input[type="number"]::-webkit-inner-spin-button {
   transform: scale(1.1);
 }
 
-.shopping-list-view {
-  max-width: 800px;
-  margin: 0 auto;
+.header-content h1 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
 }
 
-.shopping-list-container {
-  margin-top: 20px;
-}
-
-.empty-list {
-  text-align: center;
-  padding: 40px;
-  color: var(--text-secondary);
-}
-
-.empty-hint {
-  font-size: 0.9em;
-  margin-top: 8px;
-  opacity: 0.7;
-}
-
-.shopping-items {
-  display: grid;
-  gap: 16px;
-}
-
-.shopping-item {
-  background: var(--bg-secondary);
-  border-radius: 12px;
-  padding: 16px;
+.header-controls {
   display: flex;
+  gap: 0.75rem;
   align-items: center;
-  justify-content: space-between;
+}
+
+.header-controls button {
+  background: var(--bg-secondary);
+  border: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  font-size: 1.25rem;
   cursor: pointer;
   transition: all 0.3s ease;
-  position: relative;
-  overflow: hidden;
-}
-
-.shopping-item:hover {
-  transform: translateX(-4px);
-  background: var(--bg-primary);
-  box-shadow: 0 4px 12px var(--shadow-color);
-}
-
-.shopping-item-content {
-  flex: 1;
-}
-
-.shopping-item-name {
-  font-size: 1.1em;
-  font-weight: 500;
-  margin-bottom: 8px;
-}
-
-.shopping-item-details {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
+  justify-content: center;
 }
 
-.location-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.9em;
-  color: var(--text-secondary);
-  background: var(--bg-card);
-  padding: 4px 8px;
+.header-controls button:hover {
+  background: var(--accent-color);
+  color: white;
+  transform: translateY(-1px);
+}
+
+.view-toggle-btn, .settings-btn, .theme-customize-btn, .theme-toggle {
+  background: var(--bg-secondary);
+  border: none;
+  width: 40px;
+  height: 40px;
   border-radius: 8px;
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.restore-btn {
+.view-toggle-btn:hover, .settings-btn:hover, .theme-customize-btn:hover, .theme-toggle:hover {
+  background: var(--accent-color);
+  color: white;
+  transform: translateY(-1px);
+}
+
+.delete-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
   background: none;
   border: none;
-  font-size: 1.2em;
-  padding: 8px;
+  color: var(--text-secondary);
+  font-size: 1.25rem;
   cursor: pointer;
-  opacity: 0.7;
+  opacity: 0;
   transition: all 0.3s ease;
+  padding: 0.25rem;
+  border-radius: 4px;
 }
 
-.restore-btn:hover {
+.food-item:hover .delete-btn {
   opacity: 1;
-  transform: scale(1.1);
+}
+
+.delete-btn:hover {
+  background: var(--danger-color);
+  color: white;
+}
+
+@media (max-width: 768px) {
+  .header-content h1 {
+    font-size: 1.5rem;
+  }
+
+  .header-controls {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .header-controls button {
+    width: 36px;
+    height: 36px;
+    font-size: 1.1rem;
+  }
+}
+
+/* Add Item Placeholder */
+.add-item-placeholder {
+  background: var(--bg-card);
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  min-height: 120px;
+}
+
+.add-item-placeholder:hover {
+  border-color: var(--accent-color);
+  background: var(--bg-secondary);
+}
+
+.add-item-placeholder.editing {
+  border-style: solid;
+  border-color: var(--accent-color);
+  background: var(--bg-secondary);
+}
+
+.add-item-placeholder .placeholder-text {
+  color: var(--text-secondary);
+  text-align: center;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 100%;
+}
+
+.add-item-placeholder .placeholder-icon {
+  font-size: 1.5rem;
+}
+
+.add-item-form-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-row-inline {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.form-row-inline .modern-input,
+.form-row-inline .modern-select {
+  font-size: 0.9rem;
+  padding: 0.5rem;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.form-actions button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 768px) {
+  .form-row-inline {
+    flex-direction: column;
+  }
 }
 </style>
